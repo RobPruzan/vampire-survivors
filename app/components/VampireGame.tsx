@@ -38,11 +38,18 @@ interface Enemy {
   hp: number;
   maxHp: number;
   size: number;
-  type: 'basic' | 'fast' | 'tank' | 'boss' | 'swarm' | 'elite' | 'shooter' | 'splitter';
+  type: 'basic' | 'fast' | 'tank' | 'boss' | 'swarm' | 'elite' | 'shooter' | 'splitter' | 'circler' | 'dasher' | 'teleporter' | 'miniboss' | 'necromancer' | 'healer' | 'shield' | 'kamikaze';
   flashTimer: number;
   hitScale: number;
   rotation: number;
   shootTimer?: number;
+  dashTimer?: number;
+  teleportTimer?: number;
+  spawnTimer?: number;
+  circleAngle?: number;
+  circleRadius?: number;
+  shieldHp?: number;
+  maxShieldHp?: number;
 }
 
 interface Projectile {
@@ -70,6 +77,14 @@ interface XPOrb {
   value: number;
   magnetized: boolean;
   pulsePhase: number;
+}
+
+interface Chest {
+  x: number;
+  y: number;
+  opened: boolean;
+  pulsePhase: number;
+  scale: number;
 }
 
 interface Weapon {
@@ -101,11 +116,17 @@ export default function VampireGame() {
   const [gameState, setGameState] = useState<'menu' | 'playing' | 'levelup' | 'dead'>('menu');
   const gameStateRef = useRef(gameState);
   const [upgrades, setUpgrades] = useState<string[]>([]);
+  const [isPaused, setIsPaused] = useState(false);
+  const isPausedRef = useRef(false);
   const gameRef = useRef<any>(null);
 
   useEffect(() => {
     gameStateRef.current = gameState;
   }, [gameState]);
+
+  useEffect(() => {
+    isPausedRef.current = isPaused;
+  }, [isPaused]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -137,6 +158,7 @@ export default function VampireGame() {
       particles: [] as Particle[],
       damageNumbers: [] as DamageNumber[],
       xpOrbs: [] as XPOrb[],
+      chests: [] as Chest[],
       weapons: [
         {
           name: 'Magic Bolt',
@@ -162,6 +184,11 @@ export default function VampireGame() {
   const game = gameRef.current;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === ' ' && gameStateRef.current === 'playing') {
+        e.preventDefault();
+        setIsPaused(p => !p);
+        return;
+      }
       game.keys.add(e.key.toLowerCase());
     };
 
@@ -243,17 +270,33 @@ export default function VampireGame() {
         case 'elite': return '#ff0066';
         case 'shooter': return '#0066ff';
         case 'splitter': return '#ff9900';
+        case 'circler': return '#00ffff';
+        case 'dasher': return '#ff00ff';
+        case 'teleporter': return '#9900ff';
+        case 'miniboss': return '#cc00ff';
+        case 'necromancer': return '#9900cc';
+        case 'healer': return '#00ff99';
+        case 'shield': return '#00ddff';
+        case 'kamikaze': return '#ff0000';
         default: return '#ff0000';
       }
     };
 
     const getEnemyXP = (type: string) => {
       switch (type) {
-        case 'boss': return 50;
+        case 'boss': return 100;
+        case 'miniboss': return 40;
         case 'elite': return 15;
-        case 'tank': return 5;
+        case 'necromancer': return 12;
         case 'splitter': return 7;
+        case 'tank': return 5;
+        case 'healer': return 6;
+        case 'shield': return 5;
         case 'shooter': return 4;
+        case 'teleporter': return 8;
+        case 'dasher': return 6;
+        case 'circler': return 4;
+        case 'kamikaze': return 3;
         case 'fast': return 2;
         case 'swarm': return 1;
         default: return 3;
@@ -287,38 +330,78 @@ export default function VampireGame() {
       }
 
       const rand = Math.random();
-      let type: 'basic' | 'fast' | 'tank' | 'boss' | 'swarm' | 'elite' | 'shooter' | 'splitter' = 'basic';
+      let type: 'basic' | 'fast' | 'tank' | 'boss' | 'swarm' | 'elite' | 'shooter' | 'splitter' | 'circler' | 'dasher' | 'teleporter' | 'miniboss' | 'necromancer' | 'healer' | 'shield' | 'kamikaze' = 'basic';
       let hp = 30;
       let size = 15;
+      let special: any = {};
 
-      if (game.time > 60000 && rand < 0.02) {
+      if (game.time > 90000 && rand < 0.01) {
         type = 'boss';
-        hp = 500;
-        size = 40;
-      } else if (rand < 0.1) {
+        hp = 1000;
+        size = 45;
+      } else if (game.time > 60000 && rand < 0.03) {
+        type = 'miniboss';
+        hp = 300;
+        size = 35;
+      } else if (rand < 0.05) {
         type = 'swarm';
         hp = 8;
         size = 8;
-      } else if (rand < 0.2) {
+      } else if (rand < 0.12) {
         type = 'fast';
         hp = 15;
         size = 10;
-      } else if (rand < 0.35) {
+      } else if (rand < 0.22) {
         type = 'tank';
         hp = 60;
         size = 20;
-      } else if (rand < 0.45) {
+      } else if (rand < 0.30) {
         type = 'shooter';
         hp = 25;
         size = 14;
-      } else if (rand < 0.55 && game.time > 30000) {
+      } else if (rand < 0.37 && game.time > 30000) {
         type = 'elite';
         hp = 100;
         size = 18;
-      } else if (rand < 0.65 && game.time > 20000) {
+      } else if (rand < 0.43 && game.time > 20000) {
         type = 'splitter';
         hp = 40;
         size = 16;
+      } else if (rand < 0.48 && game.time > 40000) {
+        type = 'circler';
+        hp = 35;
+        size = 12;
+        special.circleAngle = Math.random() * Math.PI * 2;
+        special.circleRadius = 200;
+      } else if (rand < 0.53 && game.time > 25000) {
+        type = 'dasher';
+        hp = 50;
+        size = 15;
+        special.dashTimer = 2000;
+      } else if (rand < 0.58 && game.time > 50000) {
+        type = 'teleporter';
+        hp = 30;
+        size = 13;
+        special.teleportTimer = 3000;
+      } else if (rand < 0.63 && game.time > 45000) {
+        type = 'necromancer';
+        hp = 70;
+        size = 16;
+        special.spawnTimer = 5000;
+      } else if (rand < 0.68 && game.time > 35000) {
+        type = 'healer';
+        hp = 40;
+        size = 14;
+      } else if (rand < 0.73 && game.time > 30000) {
+        type = 'shield';
+        hp = 45;
+        size = 15;
+        special.shieldHp = 30;
+        special.maxShieldHp = 30;
+      } else if (rand < 0.78 && game.time > 15000) {
+        type = 'kamikaze';
+        hp = 20;
+        size = 11;
       }
 
       game.enemies.push({
@@ -334,11 +417,12 @@ export default function VampireGame() {
         hitScale: 1,
         rotation: 0,
         shootTimer: Math.random() * 3000,
+        ...special,
       });
     };
 
     const update = (deltaTime: number) => {
-      if (gameStateRef.current !== 'playing') return;
+      if (gameStateRef.current !== 'playing' || isPausedRef.current) return;
 
       game.time += deltaTime;
 
@@ -359,6 +443,19 @@ export default function VampireGame() {
         spawnEnemy();
       }
 
+      // Spawn chests occasionally
+      if (Math.random() < 0.001 && game.chests.length < 3) {
+        const angle = Math.random() * Math.PI * 2;
+        const distance = 400 + Math.random() * 300;
+        game.chests.push({
+          x: game.player.x + Math.cos(angle) * distance,
+          y: game.player.y + Math.sin(angle) * distance,
+          opened: false,
+          pulsePhase: 0,
+          scale: 1,
+        });
+      }
+
       for (const weapon of game.weapons) {
         if (game.time - weapon.lastFired > weapon.cooldown) {
           weapon.lastFired = game.time;
@@ -372,27 +469,66 @@ export default function VampireGame() {
               })
               .slice(0, weapon.projectileCount);
 
-            for (const target of targets) {
-              const angle = Math.atan2(target.y - game.player.y, target.x - game.player.x);
-              const speed = weapon.name === 'Fireball' ? 6 : weapon.name === 'Knife' ? 12 : 8;
-              game.projectiles.push({
-                x: game.player.x,
-                y: game.player.y,
-                vx: Math.cos(angle) * speed,
-                vy: Math.sin(angle) * speed,
-                damage: weapon.damage,
-                size: weapon.name === 'Fireball' ? 10 : 6,
-                color: weapon.color,
-                trail: [],
-                piercing: weapon.name === 'Knife' ? 3 : 0,
-                weaponType: weapon.name,
-                owner: 'player',
-              });
+            // Bone weapon shoots in 4 directions
+            if (weapon.name === 'Bone') {
+              for (let i = 0; i < 4; i++) {
+                const angle = (Math.PI * 2 * i) / 4 + game.time * 0.001;
+                game.projectiles.push({
+                  x: game.player.x,
+                  y: game.player.y,
+                  vx: Math.cos(angle) * 7,
+                  vy: Math.sin(angle) * 7,
+                  damage: weapon.damage,
+                  size: 8,
+                  color: weapon.color,
+                  trail: [],
+                  piercing: 2,
+                  weaponType: weapon.name,
+                  owner: 'player',
+                });
+              }
+            } else {
+              for (const target of targets) {
+                const angle = Math.atan2(target.y - game.player.y, target.x - game.player.x);
+                let speed = 8;
+                let piercing = 0;
+                let size = 6;
+
+                if (weapon.name === 'Fireball') {
+                  speed = 6;
+                  size = 10;
+                } else if (weapon.name === 'Knife') {
+                  speed = 12;
+                  piercing = 3;
+                } else if (weapon.name === 'Holy Water') {
+                  speed = 5;
+                  size = 8;
+                  piercing = 5;
+                } else if (weapon.name === 'Cherry Bomb') {
+                  speed = 4;
+                  size = 15;
+                  piercing = 10;
+                }
+
+                game.projectiles.push({
+                  x: game.player.x,
+                  y: game.player.y,
+                  vx: Math.cos(angle) * speed,
+                  vy: Math.sin(angle) * speed,
+                  damage: weapon.damage,
+                  size,
+                  color: weapon.color,
+                  trail: [],
+                  piercing,
+                  weaponType: weapon.name,
+                  owner: 'player',
+                });
+              }
             }
             playSound('shoot');
           } else if (weapon.type === 'orbit') {
             // Orbit weapons create projectiles that circle the player
-            const existingOrbiters = game.projectiles.filter(p => p.weaponType === weapon.name);
+            const existingOrbiters = game.projectiles.filter((p: Projectile) => p.weaponType === weapon.name);
             if (existingOrbiters.length < weapon.projectileCount) {
               const angle = (Math.PI * 2 * existingOrbiters.length) / weapon.projectileCount;
               game.projectiles.push({
@@ -466,10 +602,22 @@ export default function VampireGame() {
             const enemy = game.enemies[j];
             const dist = Math.hypot(proj.x - enemy.x, proj.y - enemy.y);
             if (dist < enemy.size + proj.size) {
-              enemy.hp -= proj.damage;
+              let actualDamage = proj.damage;
+
+              // Handle shield
+              if (enemy.shieldHp !== undefined && enemy.shieldHp > 0) {
+                const shieldDamage = Math.min(enemy.shieldHp, actualDamage);
+                enemy.shieldHp -= shieldDamage;
+                actualDamage -= shieldDamage;
+                createParticles(proj.x, proj.y, 5, '#00ddff');
+              }
+
+              enemy.hp -= actualDamage;
               enemy.flashTimer = 0.1;
               enemy.hitScale = 1.3;
-              addDamageNumber(enemy.x, enemy.y - enemy.size, proj.damage);
+              if (actualDamage > 0) {
+                addDamageNumber(enemy.x, enemy.y - enemy.size, actualDamage);
+              }
               createParticles(proj.x, proj.y, 5, proj.color);
               shakeCamera(2);
               playSound('hit');
@@ -556,9 +704,108 @@ export default function VampireGame() {
         if (enemy.type === 'elite') speed = 2;
         if (enemy.type === 'shooter') speed = 0.5;
         if (enemy.type === 'splitter') speed = 1.2;
+        if (enemy.type === 'circler') speed = 2;
+        if (enemy.type === 'dasher') speed = 1;
+        if (enemy.type === 'teleporter') speed = 1.5;
+        if (enemy.type === 'miniboss') speed = 1.2;
+        if (enemy.type === 'necromancer') speed = 0.7;
+        if (enemy.type === 'healer') speed = 1.8;
+        if (enemy.type === 'shield') speed = 1.3;
+        if (enemy.type === 'kamikaze') speed = 3.5;
 
+        // Circler orbits the player
+        if (enemy.type === 'circler' && enemy.circleAngle !== undefined && enemy.circleRadius !== undefined) {
+          enemy.circleAngle += 0.02;
+          const targetX = game.player.x + Math.cos(enemy.circleAngle) * enemy.circleRadius;
+          const targetY = game.player.y + Math.sin(enemy.circleAngle) * enemy.circleRadius;
+          const tdx = targetX - enemy.x;
+          const tdy = targetY - enemy.y;
+          const tdist = Math.hypot(tdx, tdy);
+          if (tdist > 0) {
+            enemy.vx = (tdx / tdist) * speed * 2;
+            enemy.vy = (tdy / tdist) * speed * 2;
+          }
+        }
+        // Dasher dashes toward player periodically
+        else if (enemy.type === 'dasher' && enemy.dashTimer !== undefined) {
+          enemy.dashTimer -= deltaTime;
+          if (enemy.dashTimer <= 0) {
+            enemy.dashTimer = 2000 + Math.random() * 1000;
+            enemy.vx = (dx / dist) * 15;
+            enemy.vy = (dy / dist) * 15;
+            createParticles(enemy.x, enemy.y, 10, '#ff00ff');
+          } else {
+            enemy.vx *= 0.95;
+            enemy.vy *= 0.95;
+          }
+        }
+        // Teleporter teleports closer periodically
+        else if (enemy.type === 'teleporter' && enemy.teleportTimer !== undefined) {
+          enemy.teleportTimer -= deltaTime;
+          if (enemy.teleportTimer <= 0 && dist > 200) {
+            enemy.teleportTimer = 3000 + Math.random() * 2000;
+            createExplosion(enemy.x, enemy.y, 15, '#9900ff');
+            const angle = Math.random() * Math.PI * 2;
+            enemy.x = game.player.x + Math.cos(angle) * 150;
+            enemy.y = game.player.y + Math.sin(angle) * 150;
+            createExplosion(enemy.x, enemy.y, 15, '#9900ff');
+            shakeCamera(5);
+          } else {
+            enemy.vx = (dx / dist) * speed;
+            enemy.vy = (dy / dist) * speed;
+          }
+        }
+        // Necromancer spawns enemies
+        else if (enemy.type === 'necromancer' && enemy.spawnTimer !== undefined) {
+          enemy.spawnTimer -= deltaTime;
+          if (enemy.spawnTimer <= 0) {
+            enemy.spawnTimer = 5000 + Math.random() * 3000;
+            for (let j = 0; j < 3; j++) {
+              const angle = (Math.PI * 2 * j) / 3;
+              game.enemies.push({
+                x: enemy.x + Math.cos(angle) * 30,
+                y: enemy.y + Math.sin(angle) * 30,
+                vx: 0,
+                vy: 0,
+                hp: 10,
+                maxHp: 10,
+                size: 8,
+                type: 'swarm',
+                flashTimer: 0,
+                hitScale: 1,
+                rotation: 0,
+              });
+            }
+            createParticles(enemy.x, enemy.y, 15, '#9900cc');
+          }
+          if (dist > 250) {
+            enemy.vx = (dx / dist) * speed;
+            enemy.vy = (dy / dist) * speed;
+          } else {
+            enemy.vx = -(dx / dist) * speed;
+            enemy.vy = -(dy / dist) * speed;
+          }
+        }
+        // Healer heals nearby enemies
+        else if (enemy.type === 'healer') {
+          for (const other of game.enemies) {
+            if (other !== enemy && Math.hypot(other.x - enemy.x, other.y - enemy.y) < 100) {
+              other.hp = Math.min(other.maxHp, other.hp + deltaTime * 0.01);
+              if (Math.random() < 0.02) {
+                createParticles(other.x, other.y, 1, '#00ff00');
+              }
+            }
+          }
+          if (dist > 200) {
+            enemy.vx = (dx / dist) * speed;
+            enemy.vy = (dy / dist) * speed;
+          } else {
+            enemy.vx = -(dx / dist) * speed;
+            enemy.vy = -(dy / dist) * speed;
+          }
+        }
         // Shooter keeps distance
-        if (enemy.type === 'shooter' && dist < 300) {
+        else if (enemy.type === 'shooter' && dist < 300) {
           enemy.vx = -(dx / dist) * speed;
           enemy.vy = -(dy / dist) * speed;
         } else {
@@ -592,12 +839,30 @@ export default function VampireGame() {
           }
         }
 
+        // Shield regenerates
+        if (enemy.type === 'shield' && enemy.shieldHp !== undefined && enemy.maxShieldHp !== undefined) {
+          if (enemy.shieldHp < enemy.maxShieldHp) {
+            enemy.shieldHp = Math.min(enemy.maxShieldHp, enemy.shieldHp + deltaTime * 0.02);
+          }
+        }
+
         enemy.flashTimer = Math.max(0, enemy.flashTimer - deltaTime / 1000);
         enemy.hitScale += (1 - enemy.hitScale) * 0.2;
 
         const playerDist = Math.hypot(enemy.x - game.player.x, enemy.y - game.player.y);
         if (playerDist < enemy.size + game.player.size) {
-          const damage = enemy.type === 'boss' ? 1 : enemy.type === 'elite' ? 0.7 : 0.5;
+          let damage = 0.5;
+          if (enemy.type === 'boss') damage = 2;
+          else if (enemy.type === 'elite') damage = 0.7;
+          else if (enemy.type === 'miniboss') damage = 1.5;
+          else if (enemy.type === 'tank') damage = 0.8;
+          else if (enemy.type === 'kamikaze') {
+            damage = 5;
+            enemy.hp = 0; // Explodes on contact
+            createExplosion(enemy.x, enemy.y, enemy.size * 2, '#ff0000');
+            shakeCamera(15);
+          }
+
           game.player.hp -= damage;
           game.player.flashTimer = 0.1;
           if (game.player.hp <= 0) {
@@ -641,6 +906,59 @@ export default function VampireGame() {
             generateUpgrades();
             playSound('levelup');
           }
+        }
+      }
+
+      // Update chests
+      for (let i = game.chests.length - 1; i >= 0; i--) {
+        const chest = game.chests[i];
+        if (chest.opened) continue;
+
+        chest.pulsePhase += 0.05;
+        const dx = game.player.x - chest.x;
+        const dy = game.player.y - chest.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist < game.player.size + 20) {
+          chest.opened = true;
+          chest.scale = 1.5;
+          createExplosion(chest.x, chest.y, 30, '#ffff00');
+          shakeCamera(10);
+          playSound('levelup');
+
+          // Drop rewards
+          const rand = Math.random();
+          if (rand < 0.4) {
+            // Drop XP
+            for (let j = 0; j < 10; j++) {
+              const angle = (Math.PI * 2 * j) / 10;
+              const speed = 3 + Math.random() * 2;
+              game.xpOrbs.push({
+                x: chest.x,
+                y: chest.y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                value: 5,
+                magnetized: false,
+                pulsePhase: Math.random() * Math.PI * 2,
+              });
+            }
+          } else if (rand < 0.7) {
+            // Heal
+            game.player.hp = Math.min(game.player.maxHp, game.player.hp + 30);
+            createParticles(chest.x, chest.y, 20, '#00ff00');
+          } else {
+            // Instant level up!
+            game.player.level++;
+            game.player.xp = 0;
+            game.player.xpToNext = Math.floor(game.player.xpToNext * 1.5);
+            setGameState('levelup');
+            generateUpgrades();
+          }
+
+          setTimeout(() => {
+            game.chests.splice(game.chests.indexOf(chest), 1);
+          }, 500);
         }
       }
 
@@ -760,10 +1078,52 @@ export default function VampireGame() {
             if (i === 0) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
           }
-        } else if (enemy.type === 'elite') {
+        } else if (enemy.type === 'elite' || enemy.type === 'miniboss') {
           for (let i = 0; i < 8; i++) {
             const angle = (Math.PI * 2 * i) / 8;
             const radius = i % 2 === 0 ? enemy.size : enemy.size * 0.7;
+            const x = Math.cos(angle) * radius;
+            const y = Math.sin(angle) * radius;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+        } else if (enemy.type === 'circler') {
+          for (let i = 0; i < 3; i++) {
+            const angle = (Math.PI * 2 * i) / 3;
+            const x = Math.cos(angle) * enemy.size;
+            const y = Math.sin(angle) * enemy.size;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+        } else if (enemy.type === 'dasher') {
+          ctx.moveTo(-enemy.size, 0);
+          ctx.lineTo(0, -enemy.size);
+          ctx.lineTo(enemy.size, 0);
+          ctx.lineTo(0, enemy.size);
+        } else if (enemy.type === 'teleporter') {
+          for (let i = 0; i < 5; i++) {
+            const angle = (Math.PI * 2 * i) / 5 - Math.PI / 2;
+            const x = Math.cos(angle) * enemy.size;
+            const y = Math.sin(angle) * enemy.size;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+        } else if (enemy.type === 'necromancer') {
+          for (let i = 0; i < 7; i++) {
+            const angle = (Math.PI * 2 * i) / 7;
+            const x = Math.cos(angle) * enemy.size;
+            const y = Math.sin(angle) * enemy.size;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+        } else if (enemy.type === 'healer') {
+          ctx.arc(0, 0, enemy.size * 0.8, 0, Math.PI * 2);
+        } else if (enemy.type === 'shield') {
+          ctx.arc(0, 0, enemy.size, 0, Math.PI * 2);
+        } else if (enemy.type === 'kamikaze') {
+          for (let i = 0; i < 4; i++) {
+            const angle = (Math.PI * 2 * i) / 4;
+            const radius = i % 2 === 0 ? enemy.size : enemy.size * 0.5;
             const x = Math.cos(angle) * radius;
             const y = Math.sin(angle) * radius;
             if (i === 0) ctx.moveTo(x, y);
@@ -784,6 +1144,16 @@ export default function VampireGame() {
         ctx.strokeStyle = '#ffffff40';
         ctx.lineWidth = 2;
         ctx.stroke();
+
+        // Draw shield
+        if (enemy.type === 'shield' && enemy.shieldHp !== undefined && enemy.shieldHp > 0 && enemy.maxShieldHp !== undefined) {
+          const shieldAlpha = (enemy.shieldHp / enemy.maxShieldHp) * 0.5;
+          ctx.strokeStyle = `rgba(0, 221, 255, ${shieldAlpha})`;
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.arc(0, 0, enemy.size + 5, 0, Math.PI * 2);
+          ctx.stroke();
+        }
 
         ctx.restore();
 
@@ -806,6 +1176,45 @@ export default function VampireGame() {
         ctx.arc(orb.x, orb.y, 6 * pulse, 0, Math.PI * 2);
         ctx.fill();
         ctx.shadowBlur = 0;
+      }
+
+      // Draw chests
+      for (const chest of game.chests) {
+        if (chest.opened && chest.scale < 0.1) continue;
+
+        const pulse = chest.opened ? chest.scale : 1 + Math.sin(chest.pulsePhase) * 0.1;
+        ctx.save();
+        ctx.translate(chest.x, chest.y);
+        ctx.scale(pulse, pulse);
+
+        // Chest body
+        ctx.fillStyle = chest.opened ? '#666666' : '#8B4513';
+        ctx.fillRect(-15, -10, 30, 20);
+
+        // Chest lid
+        ctx.fillStyle = chest.opened ? '#444444' : '#A0522D';
+        ctx.fillRect(-15, -15, 30, 8);
+
+        // Lock
+        if (!chest.opened) {
+          ctx.fillStyle = '#FFD700';
+          ctx.shadowColor = '#FFD700';
+          ctx.shadowBlur = 15;
+          ctx.beginPath();
+          ctx.arc(0, 0, 5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+        }
+
+        ctx.strokeStyle = '#ffffff40';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(-15, -15, 30, 23);
+
+        ctx.restore();
+
+        if (chest.opened) {
+          chest.scale *= 0.95;
+        }
       }
 
       for (const p of game.particles) {
@@ -949,6 +1358,10 @@ export default function VampireGame() {
         'New Weapon: Knife',
         'New Weapon: Axe',
         'New Weapon: Garlic',
+        'New Weapon: Holy Water',
+        'New Weapon: Bible',
+        'New Weapon: Bone',
+        'New Weapon: Cherry Bomb',
         'Speed Boost',
       ];
       const selected = [];
@@ -1052,6 +1465,62 @@ export default function VampireGame() {
           });
         }
         break;
+      case 'New Weapon: Holy Water':
+        if (!game.weapons.find((w: Weapon) => w.name === 'Holy Water')) {
+          game.weapons.push({
+            name: 'Holy Water',
+            level: 1,
+            damage: 12,
+            cooldown: 2000,
+            lastFired: 0,
+            projectileCount: 1,
+            color: '#00ccff',
+            type: 'projectile',
+          });
+        }
+        break;
+      case 'New Weapon: Bible':
+        if (!game.weapons.find((w: Weapon) => w.name === 'Bible')) {
+          game.weapons.push({
+            name: 'Bible',
+            level: 1,
+            damage: 20,
+            cooldown: 200,
+            lastFired: 0,
+            projectileCount: 2,
+            color: '#ffff99',
+            type: 'orbit',
+          });
+        }
+        break;
+      case 'New Weapon: Bone':
+        if (!game.weapons.find((w: Weapon) => w.name === 'Bone')) {
+          game.weapons.push({
+            name: 'Bone',
+            level: 1,
+            damage: 15,
+            cooldown: 800,
+            lastFired: 0,
+            projectileCount: 4,
+            color: '#eeeeee',
+            type: 'projectile',
+          });
+        }
+        break;
+      case 'New Weapon: Cherry Bomb':
+        if (!game.weapons.find((w: Weapon) => w.name === 'Cherry Bomb')) {
+          game.weapons.push({
+            name: 'Cherry Bomb',
+            level: 1,
+            damage: 50,
+            cooldown: 3000,
+            lastFired: 0,
+            projectileCount: 1,
+            color: '#ff0066',
+            type: 'projectile',
+          });
+        }
+        break;
       case 'Speed Boost':
         break;
     }
@@ -1104,6 +1573,17 @@ export default function VampireGame() {
                 </button>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {isPaused && gameState === 'playing' && (
+        <div className="absolute inset-0 flex items-center justify-center bg-[#0a0a0a80]">
+          <div className="text-center">
+            <h2 className="text-5xl font-bold text-[#00ffff] mb-4" style={{ textShadow: '0 0 20px #00ffff' }}>
+              PAUSED
+            </h2>
+            <p className="text-xl text-[#ffffff80]">Press SPACE to resume</p>
           </div>
         </div>
       )}
